@@ -1,0 +1,7 @@
+streamlit
+requests
+spacy
+pandas
+titlecase
+sentence-transformers
+torch
