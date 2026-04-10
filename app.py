@@ -44,7 +44,12 @@ def improved_extract_info(question):
         idx = tokens_lower.index("the")
         entity_raw = " ".join(tokens[idx:])
     else:
-        if doc.ents: 
+        words = clean_q.split()
+        proper_noun_parts = [w for w in words[2:] if w and w[0].isupper()] 
+        
+        if proper_noun_parts:
+            entity_raw = " ".join(proper_noun_parts)
+        elif doc.ents: 
             entity_raw = doc.ents[0].text
         else:
             chunks = list(doc.noun_chunks)
@@ -80,9 +85,17 @@ def find_best_relation(question, properties):
     question_vec = model.encode(question)
     label_vecs = model.encode(labels)
     sims = util.cos_sim(question_vec, label_vecs)[0]
+
     q_low = question.lower()
+    is_general_q = q_low.startswith("who is") or q_low.startswith("what is")
+
     for i, p in enumerate(properties):
         l_low = p['label'].lower()
+
+        if is_general_q:
+            if "abstract" in l_low or "comment" in l_low or "description" in l_low:
+                sims[i] += 0.5
+
         if "when" in q_low or "date" in q_low:
             if "date" in l_low: sims[i] += 0.3
         elif "where" in q_low or "place" in q_low:
@@ -91,8 +104,9 @@ def find_best_relation(question, properties):
             if "date" in l_low or "place" in l_low: sims[i] += 0.2
         if any(w in q_low for w in ["wife", "husband", "spouse"]) and "spouse" in l_low: sims[i] += 0.3
         if "population" in q_low and any(w in l_low for w in ["as of", "density", "rank"]): sims[i] -= 0.5
-    best_idx = sims.argmax().item()
-    return properties[best_idx]['uri'] if sims[best_idx] > 0.25 else None
+    best_idx = sims.argmax().item() 
+    threshold = 0.2 if is_general_q else 0.25
+    return properties[best_idx]['uri'] if sims[best_idx] > threshold else None
 
 def execute_sparql_query(question, entity):
     if not entity: return "Không tìm thấy thực thể.", "None"
@@ -113,7 +127,11 @@ def execute_sparql_query(question, entity):
         bindings = data["results"]["bindings"]
         if bindings:
             res_list = [b["res"]["value"].split('/')[-1].replace('_', ' ') if b["res"]["type"] == "uri" else b["res"]["value"] for b in bindings]
-            return ", ".join(list(set(res_list))), display_uri
+            final_result = ", ".join(list(set(res_list)))
+            if len(final_result) > 500:
+                final_result = final_result[:500] + "..."
+                
+            return final_result, display_uri
         return "Dữ liệu trống.", display_uri
     except Exception as e: return f"Lỗi: {str(e)}", "None"
 
