@@ -6,7 +6,13 @@ from titlecase import titlecase
 from sentence_transformers import SentenceTransformer, util
 import torch
 import os
+# Cách gọi model an toàn trên Cloud sau khi đã khai báo trong requirements
+@st.cache_resource
+def load_nlp():
+    # Load trực tiếp như một package
+    return spacy.load("en_core_web_sm")
 
+nlp = load_nlp()
 # --- TỰ ĐỘNG TẢI MODEL NLP KHI DEPLOY ---
 try:
     nlp = spacy.load("en_core_web_sm")
