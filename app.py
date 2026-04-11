@@ -82,26 +82,32 @@ def get_all_properties(entity):
 def find_best_relation(question, properties, entity_name):
     if not properties: return None
     
+    # 1. Loại bỏ tên thực thể khỏi câu hỏi để giảm nhiễu (ví dụ: "Lionel_Messi" -> "Lionel Messi")
     clean_entity = entity_name.replace("_", " ")
-    relation_question = question.lower().replace(clean_entity.lower(), "").strip()
+    # Tạo chuỗi so sánh chỉ chứa phần "hỏi" (ví dụ: "who is wife of")
+    relation_only_q = question.lower().replace(clean_entity.lower(), "").strip()
     
     labels = [p['label'] for p in properties]
-    question_vec = model.encode(relation_question) # Dùng câu hỏi đã lọc thực thể
+    # So sánh vector dựa trên phần câu hỏi đã lọc thực thể
+    question_vec = model.encode(relation_only_q) 
     label_vecs = model.encode(labels)
     sims = util.cos_sim(question_vec, label_vecs)[0]
 
-    q_low = relation_question.lower()
-    
+    q_low = relation_only_q.lower()
     for i, p in enumerate(properties):
         l_low = p['label'].lower()
-        
-        # Mở rộng logic boost cho cả 'wife', 'spouse', 'husband'
+
+        # 2. Tăng mạnh điểm ưu tiên (Boost) cho các từ khóa quan trọng
         rel_keywords = ["wife", "husband", "spouse", "partner"]
         if any(w in q_low for w in rel_keywords) and any(w in l_low for w in rel_keywords):
-            sims[i] += 0.35 # Tăng mức boost để đảm vượt ngưỡng
+            sims[i] += 0.5  # Tăng mạnh để vượt qua các thuộc tính 'name'
             
+        # 3. Phạt điểm (Penalty) các quan hệ 'name' nếu câu hỏi có từ khóa 'wife'
+        if any(w in q_low for w in rel_keywords) and "name" in l_low:
+            sims[i] -= 0.4
+
     best_idx = sims.argmax().item() 
-    threshold = 0.2  # Có thể hạ thấp ngưỡng một chút nếu cần
+    threshold = 0.2 
     return properties[best_idx]['uri'] if sims[best_idx] > threshold else None
 
 def execute_sparql_query(question, entity):
