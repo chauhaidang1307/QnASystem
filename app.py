@@ -79,44 +79,36 @@ def get_all_properties(entity):
         return [{"uri": b["p"]["value"], "label": b["label"]["value"]} for b in data["results"]["bindings"]]
     except: return []
 
-def find_best_relation(question, properties):
+def find_best_relation(question, properties, entity_name):
     if not properties: return None
+    
+    clean_entity = entity_name.replace("_", " ")
+    relation_question = question.lower().replace(clean_entity.lower(), "").strip()
+    
     labels = [p['label'] for p in properties]
-    question_vec = model.encode(question)
+    question_vec = model.encode(relation_question) # Dùng câu hỏi đã lọc thực thể
     label_vecs = model.encode(labels)
     sims = util.cos_sim(question_vec, label_vecs)[0]
 
-    q_low = question.lower()
-    #Thêm specific words để vá lỗi
-    specific_keywords = ["wife", "husband", "spouse", "author", "creator"] #"born", "birth", "date", "place", "capital", "population",
-    has_sk = any(w in q_low for w in specific_keywords) #specific keywords
-
-    is_general_q = (q_low.startswith("who is") or q_low.startswith("what is")) and not has_sk
-
+    q_low = relation_question.lower()
+    
     for i, p in enumerate(properties):
         l_low = p['label'].lower()
-
-        if is_general_q:
-            if "abstract" in l_low or "comment" in l_low or "description" in l_low:
-                sims[i] += 0.5
-
-        if "when" in q_low or "date" in q_low:
-            if "date" in l_low: sims[i] += 0.3
-        elif "where" in q_low or "place" in q_low:
-            if "place" in l_low: sims[i] += 0.3
-        elif "born" in q_low or "birth" in q_low:
-            if "date" in l_low or "place" in l_low: sims[i] += 0.2
-        if any(w in q_low for w in ["wife", "husband", "spouse"]) and "spouse" in l_low: sims[i] += 0.3
-        if "population" in q_low and any(w in l_low for w in ["as of", "density", "rank"]): sims[i] -= 0.5
+        
+        # Mở rộng logic boost cho cả 'wife', 'spouse', 'husband'
+        rel_keywords = ["wife", "husband", "spouse", "partner"]
+        if any(w in q_low for w in rel_keywords) and any(w in l_low for w in rel_keywords):
+            sims[i] += 0.35 # Tăng mức boost để đảm vượt ngưỡng
+            
     best_idx = sims.argmax().item() 
-    threshold = 0.2 if is_general_q else 0.25
+    threshold = 0.2  # Có thể hạ thấp ngưỡng một chút nếu cần
     return properties[best_idx]['uri'] if sims[best_idx] > threshold else None
 
 def execute_sparql_query(question, entity):
     if not entity: return "Không tìm thấy thực thể.", "None"
     available_props = get_all_properties(entity)
     if not available_props: return f"Không có dữ liệu cho {entity}. Hoặc do chưa xử lý được hết các trường hợp, hãy thông cảm...", "None"
-    best_uri = find_best_relation(question, available_props)
+    best_uri = find_best_relation(question, available_props, entity)
     if not best_uri: return "AI không khớp được quan hệ. Hoặc do chưa xử lý được hết các trường hợp, hãy thông cảm...", "None"
     display_uri = best_uri.replace("http://dbpedia.org/ontology/", "dbo:").replace("http://dbpedia.org/property/", "dbp:")
     q_low = question.lower()
