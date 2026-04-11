@@ -87,7 +87,11 @@ def find_best_relation(question, properties):
     sims = util.cos_sim(question_vec, label_vecs)[0]
 
     q_low = question.lower()
-    is_general_q = q_low.startswith("who is") or q_low.startswith("what is")
+    #Thêm specific words để vá lỗi
+    specific_keywords = ["wife", "husband", "spouse", "author", "creator"] #"born", "birth", "date", "place", "capital", "population",
+    has_sk = any(w in q_low for w in specific_keywords) #specific keywords
+
+    is_general_q = (q_low.startswith("who is") or q_low.startswith("what is")) and not has_sk
 
     for i, p in enumerate(properties):
         l_low = p['label'].lower()
