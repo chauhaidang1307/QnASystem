@@ -82,39 +82,33 @@ def get_all_properties(entity):
 def find_best_relation(question, properties, entity_name):
     if not properties: return None
     
-    # 1. Loại bỏ tên thực thể khỏi câu hỏi để giảm nhiễu (ví dụ: "Lionel_Messi" -> "Lionel Messi")
     clean_entity = entity_name.replace("_", " ")
-    # Tạo chuỗi so sánh chỉ chứa phần "hỏi" (ví dụ: "who is wife of")
-    relation_only_q = question.lower().replace(clean_entity.lower(), "").strip()
+    relation_question = question.lower().replace(clean_entity.lower(), "").strip()
     
     labels = [p['label'] for p in properties]
-    # So sánh vector dựa trên phần câu hỏi đã lọc thực thể
-    question_vec = model.encode(relation_only_q) 
+    question_vec = model.encode(relation_question) # Dùng câu hỏi đã lọc thực thể
     label_vecs = model.encode(labels)
     sims = util.cos_sim(question_vec, label_vecs)[0]
 
-    q_low = relation_only_q.lower()
+    q_low = relation_question.lower()
+    
     for i, p in enumerate(properties):
         l_low = p['label'].lower()
-
-        # 2. Tăng mạnh điểm ưu tiên (Boost) cho các từ khóa quan trọng
+        
+        # Mở rộng logic boost cho cả 'wife', 'spouse', 'husband'
         rel_keywords = ["wife", "husband", "spouse", "partner"]
         if any(w in q_low for w in rel_keywords) and any(w in l_low for w in rel_keywords):
-            sims[i] += 0.5  # Tăng mạnh để vượt qua các thuộc tính 'name'
+            sims[i] += 0.35 # Tăng mức boost để đảm vượt ngưỡng
             
-        # 3. Phạt điểm (Penalty) các quan hệ 'name' nếu câu hỏi có từ khóa 'wife'
-        if any(w in q_low for w in rel_keywords) and "name" in l_low:
-            sims[i] -= 0.4
-
     best_idx = sims.argmax().item() 
-    threshold = 0.2 
+    threshold = 0.2  # Có thể hạ thấp ngưỡng một chút nếu cần
     return properties[best_idx]['uri'] if sims[best_idx] > threshold else None
 
 def execute_sparql_query(question, entity):
     if not entity: return "Không tìm thấy thực thể.", "None"
     available_props = get_all_properties(entity)
     if not available_props: return f"Không có dữ liệu cho {entity}. Hoặc do chưa xử lý được hết các trường hợp, hãy thông cảm...", "None"
-    best_uri = find_best_relation(question, available_props, entity)
+    best_uri = find_best_relation(question, available_props)
     if not best_uri: return "AI không khớp được quan hệ. Hoặc do chưa xử lý được hết các trường hợp, hãy thông cảm...", "None"
     display_uri = best_uri.replace("http://dbpedia.org/ontology/", "dbo:").replace("http://dbpedia.org/property/", "dbp:")
     q_low = question.lower()
